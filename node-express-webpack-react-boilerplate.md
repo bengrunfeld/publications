@@ -1,6 +1,6 @@
-# Node Express Webpack Boilerplate - Production and Development builds
+# Creating an Node Express & Webpack Application with Dev and Prod Builds
 
-This is a really long article. Sorry - it takes time to explain this stuff.
+This is a very long article. I'm sorry - it takes time to explain this stuff.
 
 I **REALLY** struggled with building an error-free Webpack and Express application boilerplate. 
 
@@ -18,9 +18,42 @@ If you like the article or this project, please show some love by hitting the Cl
 
 Firstly, we want to have both a development build of our code, as well as a production build, because we want to employ certain tools in one but not the other. 
 
-For example, for our Development build, we want to transpile it from ES6+, lint it, run unit tests on it, run coverage reports for it, and to enable Hot Module Replacement (HMR) for an easier development experience. Re bundling, we do NOT want to minify it or uglify it, so that we can explore features and find bugs more easily. Similarly, we want the images to stay as their own files so that they are more easily identifiable - as opposed to being encoded in Base64 straight into our CSS file. 
+For our Development build, we want to transpile it from ES6+, lint it, run unit tests on it, run coverage reports for it, and to enable Hot Module Replacement (HMR) for an easier development experience. Re bundling, we do NOT want to minify it or uglify it, so that we can explore features and find bugs more easily. Similarly, we want the images to stay as their own files so that they are more easily identifiable - as opposed to being encoded in Base64 straight into our CSS file. 
 
-For our Production build, 
+For our Production build, we want the file sizes to be as small as possible to increase app loading speed and usage speed (especially on mobile devices, which may have limited bandwidth). We also want there to be as few files as possible to reduce the number of requests from to the server. With all that in mind, we'll want to minify and uglify our code, with comments and blank space stripped out. We will also want to encode images directly into our CSS files as Base64 to reduce the amount of files (as above).
+
+To avoid unnecessary imports and to keep Dev and Prod concepts clearly seperate, we will have a seperate **Express server file** for Dev and Prod, and seperate **Webpack config files** for Dev and Prod application code, and for the server too.
+
+If you're already confused, please don't worry. It will become clearer as we build out the app. Once you've finished the article, read this section again and it will make more sense.
+
+## Our Tech Stack
+
+These are the main technologies we want to employ:
+
+* Express - server
+* Webpack 4 - bundling
+* Jest - testing
+* Babel - ES6+ transpilation
+* ESlint - Linting
+* Webpack Dev Middleware - Bundle code in memory instead of in a file
+* Webpack Hot Middleware - Enables Hot Module Replacement (HMR)
+* UglifyJS - uglifies code
+* mini-css-extract-plugin - minifies CSS
+
+NOTE: The next article that deals with building a React Express Webpack application will simply add React to this tech stack, with some special configuration changes. 
+
+## Ok, Let's Begin
+
+I'm running all of this on macOS Sierra 10.12.6, with Node v10.0.0, NPM 6.0.0, Webpack 4, Express 4.16.3. 
+
+Let's start from scratch with a new directory: 
+
+    mkdir express-webpack
+    cd express-webpack
+
+
+
+
 
 
 
