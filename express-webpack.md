@@ -18,7 +18,7 @@ If you like the article or this project, please show some love by hitting the Cl
 
 Firstly, we want to have both a development build of our code, as well as a production build, because we want to employ certain tools in one but not the other. 
 
-For our Development build, we want to transpile it from ES6+, lint it, run unit tests on it, run coverage reports for it, and to enable Hot Module Replacement (HMR) for an easier development experience. Re bundling, we do NOT want to minify it or uglify it, so that we can explore features and find bugs more easily. Similarly, we want the images to stay as their own files so that they are more easily identifiable - as opposed to being encoded in Base64 straight into our CSS file. 
+For our Development build, we want to transpile it from ES6+, lint it, run unit tests on it, run coverage reports for it, and to enable Hot Module Reloading (HMR) for an easier development experience. Re bundling, we do NOT want to minify it or uglify it, so that we can explore features and find bugs more easily. Similarly, we want the images to stay as their own files so that they are more easily identifiable - as opposed to being encoded in Base64 straight into our CSS file. 
 
 For our Production build, we want the file sizes to be as small as possible to increase app loading speed and usage speed (especially on mobile devices, which may have limited bandwidth). We also want there to be as few files as possible to reduce the number of requests from to the server. With all that in mind, we'll want to minify and uglify our code, with comments and blank space stripped out. We will also want to encode images directly into our CSS files as Base64 to reduce the amount of files (as above).
 
@@ -36,7 +36,7 @@ These are the main technologies we want to employ:
 * Babel - ES6+ transpilation
 * ESlint - Linting
 * Webpack Dev Middleware - Bundle code in memory instead of in a file
-* Webpack Hot Middleware - Enables Hot Module Replacement (HMR)
+* Webpack Hot Middleware - Enables Hot Module Reloading (HMR)
 * UglifyJS - uglifies code
 * mini-css-extract-plugin - minifies CSS
 
@@ -104,7 +104,7 @@ And of course, a nice simple HTML file to say Hello.
 
 Now, to test that it works, run `npm start` and navigate to `http://localhost:8080`. Page should display the HTML correctly.
 
-NOTE: Make sure to open the Console in Chrome Dev Tools to ensure that no Javascript or other errors are being generated.
+NOTE: Make sure to open the Console in Browser Dev Tools to ensure that no Javascript or other errors are being generated.
 
 ## Step 2: Install and Enable Webpack
 
@@ -395,17 +395,337 @@ And now let's finish everything off with `./webpack.config.js`.
       ]
     }
 
-If you run `npm run build`, you should not receive any errors. If you do, hunt them down. They 
+Notice how we use `target: 'web'` for the app builds. This is VERY important, and you'll get an error if you use `target: 'node'`, so be sure to double check it.
+
+If you run `npm run build`, you should not receive any errors. If you do, hunt them down. 
 
 ## Step 4: Seperate App into Dev and Prod Builds
 
+While the above is good general starting point and will give you most of the things you want for a basic app, we're going to want to start using different technologies for Dev than for Prod. For example, we'll want images encoded in Base64 directly into the CSS file in Prod builds, but we'll want them in regular image file format in Dev builds. Also, we'll want to enable Hot Module Reloading in Dev only, and definitely not in Prod. 
+
+So first, let's split `webpack.config.js` into `webpack.dev.config.js` and `webpack.prod.config.js`. Also, split `./src/server/server.js` into `server-dev.js` and `server-prod.js`  They can all have the same code at moment - we'll change it soon.
+
+So the directory structure will look like this (affected files only):
+
+    src
+        server
+            server-dev.js
+            server-prod.js
+    webpack.dev.config.js
+    webpack.prod.config.js
+    webpack.server.config.js
+
+> NOTE: The reasons I split everything out into its own file instead of finding some smart way to have everything in one file is that this is my personal style. I like to be VERY declarative with my projects and my code - some might even say that I'm being overly obvious about what I'm trying to do. This makes it easier to figure out what my initial intentions were later on when I need to return to a part of the project. 
+
+Now let's update the `package.json` scripts accordingly:
+
+    "scripts": {
+      "buildDev": "rm -rf dist && webpack --mode development --config webpack.server.config.js && webpack --mode development --config webpack.dev.config.js",
+      "buildProd": "rm -rf dist && webpack --mode production --config webpack.server.config.js && webpack --mode production --config webpack.prod.config.js",
+      "start": "node ./dist/server.js"
+    },
+
+As we said, `server-dev.js` and `server-prod.js` will have the same code.
+
+Let's change `webpack.server.config.js` to the following.
+
+    const path = require('path')
+    const webpack = require('webpack')
+    const nodeExternals = require('webpack-node-externals')
+    
+    module.exports = (env, argv) => {
+      const SERVER_PATH = (argv.mode === 'production') ?
+        './src/server/server-prod.js' :
+        './src/server/server-dev.js'
+    
+      return ({
+        entry: {
+          server: SERVER_PATH,
+        },
+        output: {
+          path: path.join(__dirname, 'dist'),
+          publicPath: '/',
+          filename: '[name].js'
+        },
+        target: 'node',
+        node: {
+          // Need this when working with express, otherwise the build fails
+          __dirname: false,   // if you don't put this is, __dirname
+          __filename: false,  // and __filename return blank or /
+        },
+        externals: [nodeExternals()], // Need this to avoid error when working with Express
+        module: {
+          rules: [
+            {
+              // Transpiles ES6-8 into ES5
+              test: /\.js$/,
+              exclude: /node_modules/,
+              use: {
+                loader: "babel-loader"
+              }
+            }
+          ]
+        }
+      })
+    }
+
+Here we have used some Webpack 4 goodness that allows the config file to export a function which takes `argv` as a param. `argv` has a property `mode` which tells you what `--mode` flag the `webpack` command was called with (development or production) from the CLI.
+
+We use `argv.mode` to decide which server file to use - `server-dev.js` or `server-prod.js`.
+
+At this stage, everything should work. Notice how when you run `npm run buildDev` and then `npm start`, the source code that appears in the browser (Browser Dev Tools Sources tab - `main.js`) is very different than if you run `npm run buildProd` and then `npm start`. When you use the `--mode production` flag in Webpack 4, your code gets minified and uglified. Woot!
+
+Ok, let's apply some build-specific functionality to Dev and Prod so that separating config and server files has a point. Webpack doesn't have a CSS minifier, so we're going to install and use our own. This will also encode images into Base64 and place them directly into our CSS file, as we discussed above
+
+    npm install --save-dev mini-css-extract-plugin uglifyjs-webpack-plugin optimize-css-assets-webpack-plugin
+
+Here is the updated code for `webpack.prod.config.js`:
+
+    const path = require("path")
+    const HtmlWebPackPlugin = require("html-webpack-plugin")
+    const MiniCssExtractPlugin = require("mini-css-extract-plugin")
+    const UglifyJsPlugin = require("uglifyjs-webpack-plugin")
+    const OptimizeCSSAssetsPlugin = require("optimize-css-assets-webpack-plugin");
+    
+    module.exports = {
+      entry: {
+        main: './src/index.js'
+      },
+      output: {
+        path: path.join(__dirname, 'dist'),
+        publicPath: '/',
+        filename: '[name].js'
+      },
+      target: 'web',
+      devtool: '#source-map',
+      // Webpack 4 does not have a CSS minifier, although
+      // Webpack 5 will likely come with one
+      optimization: {
+        minimizer: [
+          new UglifyJsPlugin({
+            cache: true,
+            parallel: true,
+            sourceMap: true // set to true if you want JS source maps
+          }),
+          new OptimizeCSSAssetsPlugin({})
+        ]
+      },
+      module: {
+        rules: [
+          {
+            // Transpiles ES6-8 into ES5
+            test: /\.js$/,
+            exclude: /node_modules/,
+            use: {
+              loader: "babel-loader"
+            }
+          },
+          {
+            // Loads the javacript into html template provided.
+            // Entry point is set below in HtmlWebPackPlugin in Plugins 
+            test: /\.html$/,
+            use: [
+              {
+                loader: "html-loader",
+                options: { minimize: true }
+              }
+            ]
+          },
+          {
+            // Loads images into CSS and Javascript files
+            test: /\.jpg$/,
+            use: [{loader: "url-loader"}]
+          },
+          {
+            // Loads CSS into a file when you import it via Javascript
+            // Rules are set in MiniCssExtractPlugin
+            test: /\.css$/,
+            use: [MiniCssExtractPlugin.loader, 'css-loader']
+          },
+        ]
+      },
+      plugins: [
+        new HtmlWebPackPlugin({
+          template: "./src/html/index.html",
+          filename: "./index.html"
+        }),
+        new MiniCssExtractPlugin({
+          filename: "[name].css",
+          chunkFilename: "[id].css"
+        })
+      ]
+    }
+
+`webpack.dev.config.js` stays the same as before:
+
+    const path = require("path")
+    const webpack = require('webpack')
+    const HtmlWebPackPlugin = require("html-webpack-plugin")
+    
+    module.exports = {
+      entry: {
+        main: './src/index.js'
+      },
+      output: {
+        path: path.join(__dirname, 'dist'),
+        publicPath: '/',
+        filename: '[name].js'
+      },
+      target: 'web',
+      devtool: '#source-map',
+      module: {
+        rules: [
+          {
+            test: /\.js$/,
+            exclude: /node_modules/,
+            loader: "babel-loader",
+          },
+          {
+            // Loads the javacript into html template provided.
+            // Entry point is set below in HtmlWebPackPlugin in Plugins 
+            test: /\.html$/,
+            use: [
+              {
+                loader: "html-loader",
+                //options: { minimize: true }
+              }
+            ]
+          },
+          { 
+            test: /\.css$/,
+            use: [ 'style-loader', 'css-loader' ]
+          },
+          {
+           test: /\.(png|svg|jpg|gif)$/,
+           use: ['file-loader']
+          }
+        ]
+      },
+      plugins: [
+        new HtmlWebPackPlugin({
+          template: "./src/html/index.html",
+          filename: "./index.html",
+          excludeChunks: [ 'server' ]
+        })
+      ]
+    }
+
+To check that all of the above works, use Browser Dev Tools to look at your CSS and you should see the difference - Prod should be minified with a giant-ass image in it, while Dev should have a link to the image file.
 
 ## Step 5: Add Webpack Dev Middleware
 
+As you've noticed so far through iterative development, running `npm run buildDev` every time you make a change to a file gets REALLY annoying.... fast. Fear not, `webpack-dev-middleware` comes to the rescue.
 
-## Step 6: Add Hot Module Replacement
+Webpack Dev Middleware (WDM) watches your source files and runs a Webpack build anytime you hit save on a file. All changes are handled in memory, so no files are writted to the disk. Hot Module Reloading is build on top of Webpack Dev Middleware, so we need to do this step first anyway.
+
+Let's install our dev dependencies:
+
+    npm install --save-dev webpack-dev-middleware
+
+Because WDM has not yet caught up with Webpack 4 as of the time of this writing, it still expects an object to be exported from `webpack.dev.config.js`, so we can't export a function that uses `argv.mode` to set the `mode`. Instead, we have to hard-code it into the config file.
+
+Let's update `webpack.dev.config.js`:
+
+    const path = require('path')
+    const webpack = require('webpack')
+    const HtmlWebPackPlugin = require('html-webpack-plugin')
+    
+    module.exports = {
+      entry: {
+        main: './src/index.js'
+      },
+      output: {
+        path: path.join(__dirname, 'dist'),
+        publicPath: '/',
+        filename: '[name].js'
+      },
+      mode: 'development',
+      target: 'web',
+      devtool: '#source-map',
+      module: {
+        rules: [
+          {
+            test: /\.js$/,
+            exclude: /node_modules/,
+            loader: "babel-loader",
+          },
+          {
+            // Loads the javacript into html template provided.
+            // Entry point is set below in HtmlWebPackPlugin in Plugins 
+            test: /\.html$/,
+            use: [
+              {
+                loader: "html-loader",
+                //options: { minimize: true }
+              }
+            ]
+          },
+          { 
+            test: /\.css$/,
+            use: [ 'style-loader', 'css-loader' ]
+          },
+          {
+           test: /\.(png|svg|jpg|gif)$/,
+           use: ['file-loader']
+          }
+        ]
+      },
+      plugins: [
+        new HtmlWebPackPlugin({
+          template: "./src/html/index.html",
+          filename: "./index.html",
+          excludeChunks: [ 'server' ]
+        }),
+        new webpack.NoEmitOnErrorsPlugin()
+      ]
+    }
+
+Now we have to update `./src/server/server-dev.js` with the WDM code:
+    
+    import path from 'path'
+    import express from 'express'
+    import webpack from 'webpack'
+    import webpackDevMiddleware from 'webpack-dev-middleware'
+    import config from '../../webpack.dev.config.js'
+    
+    const app = express(),
+                DIST_DIR = __dirname,
+                HTML_FILE = path.join(DIST_DIR, 'index.html'),
+                compiler = webpack(config)
+    
+    app.use(webpackDevMiddleware(compiler, {
+      publicPath: config.output.publicPath
+    }))
+    
+    app.get('*', (req, res, next) => {
+      compiler.outputFileSystem.readFile(HTML_FILE, (err, result) => {
+      if (err) {
+        return next(err)
+      }
+      res.set('content-type', 'text/html')
+      res.send(result)
+      res.end()
+      })
+    })
+    
+    const PORT = process.env.PORT || 8080
+    
+    app.listen(PORT, () => {
+        console.log(`App listening to ${PORT}....`)
+        console.log('Press Ctrl+C to quit.')
+    })
+
+Run `npm run buildDev` and `npm start`, and that should work. Make a change to a file (e.g. `logger.js` or `index.html`) and if you refresh, you should see the change.
+
+## Step 6: Add Hot Module Reloading
+
+One final touch before we move on to Linting and Unit Testing is to enable Hot Module Reloading (HRM). Basically, whenever you save a change to a file, Webpack Dev Middleware creates a new build, and HMR executes the change in the browser without you having to refresh the page manually (i.e. Ctrl + R).
 
 
+
+## Step 6: Add ESLint Code Linting
+
+## Step 7: Add Jest Unit Testing and Coverage
 
 
 
