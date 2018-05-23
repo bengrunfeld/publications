@@ -97,11 +97,12 @@ And of course, a nice simple HTML file to say Hello.
         <link rel="shortcut icon" href="#">
     </head>
     <body>
-        <h1>It's alive!!</h1>
+        <h1>Expack</h1>
+        <p class="description">Express and Webpack Boilerplate App</p>
     </body>
     </html>
 
-Now, to test that it works, run `npm start` and navigate to `http://localhost:8080`. Page should read "It's alive!!"
+Now, to test that it works, run `npm start` and navigate to `http://localhost:8080`. Page should display the HTML correctly.
 
 NOTE: Make sure to open the Console in Chrome Dev Tools to ensure that no Javascript or other errors are being generated.
 
@@ -156,12 +157,7 @@ Now we must create the Webpack config file - `webpack.config.js`, and it should 
             // Loads the javacript into html template provided.
             // Entry point is set below in HtmlWebPackPlugin in Plugins 
             test: /\.html$/,
-            use: [
-              {
-                loader: "html-loader",
-                options: { minimize: true }
-              }
-            ]
+            use: [{loader: "html-loader"}]
           }
         ]
       },
@@ -173,6 +169,8 @@ Now we must create the Webpack config file - `webpack.config.js`, and it should 
         })
       ]
     }
+
+Note that `excludeChunks` will exclude a file called `server` which we don't want to be included into our HTML file, since that is the webserver, and not needed in the app itself.
 
 Change `server.js` to have ES6+ `import` syntax instead of Node's `require` to test that Babel transpilation is happening correctly.
 
@@ -215,17 +213,197 @@ Now you can run `npm run build` and `npm start` and navigate to `localhost:8080`
 
 ## Step 3: Add CSS and Javascript Functionality to App
 
+We have quite a bit of functionality in place already, but lets add CSS styles, Javascript, and images to our app.
+
+To do this, we are going to need to separate our Webpack config into 2 files, which will later even become 3 files. One will only deal with bundling the server code - `webpack.server.config.js` and the other will deal with bundling the application code - `webpack.config.js`. Later, we'll separate this main config file into Dev and Prod versions, and we'll separate the server file into Dev and Prod versions too.
+
+First, let's install the necessary dependencies:
+
+    npm install --save-dev css-loader file-loader style-loader
+
+Our directory structure should look like this:
+
+    .babelrc
+    .git
+    .gitignore
+    README.md
+    dist
+    node_modules
+    package-lock.json
+    package.json
+    webpack.config.js
+    webpack.server.config.js
+    src
+        index.js
+        html
+            index.html
+        css
+            style.css
+        js
+            index.js
+        img
+            awful-selfie.jpg
+        server
+            server.js
+
+Adjust your `package.json` scripts.
+
+    "scripts": {
+      "build": "rm -rf dist && webpack --mode development --config webpack.server.config.js && webpack --mode development",
+      "start": "node ./dist/server.js"
+    },
+
+Now update `./src/html/index.html`
+
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>Express and Webpack App</title>
+        <link rel="shortcut icon" href="#">
+    </head>
+    <body>
+        <h1>Expack</h1>
+        <p class="description">Express and Webpack Boilerplate App</p>
+        <div class="awful-selfie"></div>
+    </body>
+    </html>
+
+Now update `./src/css/style.css`
+
+    h1, h2, h3, h4, h5, p {
+      font-family: helvetica;
+      color: #3e3e3e;
+    }
+    
+    .description {
+      font-size: 14px;
+      color: #9e9e9e;
+    }
+    
+    .awful-selfie{
+      background: url(../img/bg.jpg);
+      width: 300px;
+      height: 300px;
+      background-size: 100% auto;
+      background-repeat: no-repeat;
+    }
+
+Now update `./src/index.js` to check that imports and styles are working, as well as some basic functionality.
+
+    import logMessage from './js/logger'
+    import './css/style.css'
+    
+    // Log message to console
+    logMessage('Welcome to Expack!')
+
+And of course `./src/js/logger.js`
+
+    const logMessage = msg => console.log(msg)
+    
+    export default logMessage
+
+Just move `server.js` from the root into `./src/server`. This keeps the root clean and keeps server code in a location that's appropriate.
+
+Finally, let's take care of Webpack config. We'll start with `./webpack.server.config.js`.
+
+    const path = require('path')
+    const webpack = require('webpack')
+    const nodeExternals = require('webpack-node-externals')
+    
+    module.exports = {
+      entry: {
+        server: './src/server/server.js',
+      },
+      output: {
+        path: path.join(__dirname, 'dist'),
+        publicPath: '/',
+        filename: '[name].js'
+      },
+      target: 'node',
+      node: {
+        // Need this when working with express, otherwise the build fails
+        __dirname: false,   // if you don't put this is, __dirname
+        __filename: false,  // and __filename return blank or /
+      },
+      externals: [nodeExternals()], // Need this to avoid error when working with Express
+      module: {
+        rules: [
+          {
+            // Transpiles ES6-8 into ES5
+            test: /\.js$/,
+            exclude: /node_modules/,
+            use: {
+              loader: "babel-loader"
+            }
+          }
+        ]
+      }
+    }
+
+And now let's finish everything off with `./webpack.config.js`.
+
+    const path = require("path")
+    const webpack = require('webpack')
+    const HtmlWebPackPlugin = require("html-webpack-plugin")
+    
+    module.exports = {
+      entry: {
+        main: './src/index.js'
+      },
+      output: {
+        path: path.join(__dirname, 'dist'),
+        publicPath: '/',
+        filename: '[name].js'
+      },
+      target: 'web',
+      devtool: '#source-map',
+      module: {
+        rules: [
+          {
+            test: /\.js$/,
+            exclude: /node_modules/,
+            loader: "babel-loader",
+          },
+          {
+            // Loads the javacript into html template provided.
+            // Entry point is set below in HtmlWebPackPlugin in Plugins 
+            test: /\.html$/,
+            use: [
+              {
+                loader: "html-loader",
+                //options: { minimize: true }
+              }
+            ]
+          },
+          {
+            test: /\.css$/,
+            use: [ 'style-loader', 'css-loader' ]
+          },
+          {
+           test: /\.(png|svg|jpg|gif)$/,
+           use: ['file-loader']
+          }
+        ]
+      },
+      plugins: [
+        new HtmlWebPackPlugin({
+          template: "./src/html/index.html",
+          filename: "./index.html",
+          excludeChunks: [ 'server' ]
+        })
+      ]
+    }
+
+If you run `npm run build`, you should not receive any errors. If you do, hunt them down. They 
+
+## Step 4: Seperate App into Dev and Prod Builds
 
 
+## Step 5: Add Webpack Dev Middleware
 
 
-
-
-
-
-
-
-
+## Step 6: Add Hot Module Replacement
 
 
 
