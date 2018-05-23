@@ -10,9 +10,9 @@ Considering the fact that Express and Webpack are amongst the most used technolo
 
 There are a couple that look at one aspect or another of integration, but besides [Alejandro Napoles'](https://alejandronapoles.com/) FANTASTIC series on the issue, there's really not much else. 
 
-Link to code: **[Expack](https://github.com/bengrunfeld/expack)** (Express + Webpack). Similarily, the React version is called **[Rexpack](https://github.com/bengrunfeld/rexpack)** (React + Express + Webpack).
+If you like this article or the projects (Expack and Rexpack), please show some love by hitting the Clap/Applause button, starring it on Github, or just tweeting me a quick thank you note at [@bengrunfeld](https://twitter.com/bengrunfeld). I'm not asking this because of some marketing effort - I couldn't care less about that. The feedback means a lot to me personally, and every single star/clap makes me happy. Thank you!!
 
-If you like the article or this project, please show some love by hitting the Clap/Applause button, starring it on Github (I love stars!!!), or just tweeting me a quick thank you note at [@bengrunfeld](https://twitter.com/bengrunfeld), which I also love.
+Link to code: **[Expack](https://github.com/bengrunfeld/expack)** (Express + Webpack). Similarily, the React version is called **[Rexpack](https://github.com/bengrunfeld/rexpack)** (React + Express + Webpack).
 
 ## What We Want To Make
 
@@ -721,15 +721,277 @@ Run `npm run buildDev` and `npm start`, and that should work. Make a change to a
 
 One final touch before we move on to Linting and Unit Testing is to enable Hot Module Reloading (HRM). Basically, whenever you save a change to a file, Webpack Dev Middleware creates a new build, and HMR executes the change in the browser without you having to refresh the page manually (i.e. Ctrl + R).
 
+    npm install --save-dev webpack-hot-middleware
 
+Now we need to update `webpack.dev.config.js`:
+
+    const path = require('path')
+    const webpack = require('webpack')
+    const HtmlWebPackPlugin = require('html-webpack-plugin')
+
+    module.exports = {
+      entry: {
+        main: ['webpack-hot-middleware/client?path=/__webpack_hmr&timeout=20000', './src/index.js']
+      },
+      output: {
+        path: path.join(__dirname, 'dist'),
+        publicPath: '/',
+        filename: '[name].js'
+      },
+      mode: 'development',
+      target: 'web',
+      devtool: '#source-map',
+      module: {
+        rules: [
+          {
+            test: /\.js$/,
+            exclude: /node_modules/,
+            loader: "babel-loader",
+          },
+          {
+            // Loads the javacript into html template provided.
+            // Entry point is set below in HtmlWebPackPlugin in Plugins 
+            test: /\.html$/,
+            use: [
+              {
+                loader: "html-loader",
+                //options: { minimize: true }
+              }
+            ]
+          },
+          { 
+            test: /\.css$/,
+            use: [ 'style-loader', 'css-loader' ]
+          },
+          {
+           test: /\.(png|svg|jpg|gif)$/,
+           use: ['file-loader']
+          }
+        ]
+      },
+      plugins: [
+        new HtmlWebPackPlugin({
+          template: "./src/html/index.html",
+          filename: "./index.html",
+          excludeChunks: [ 'server' ]
+        }),
+        new webpack.HotModuleReplacementPlugin(),
+        new webpack.NoEmitOnErrorsPlugin()
+      ]
+    }
+
+And also `./src/server/server-dev.js`:
+
+    import path from 'path'
+    import express from 'express'
+    import webpack from 'webpack'
+    import webpackDevMiddleware from 'webpack-dev-middleware'
+    import webpackHotMiddleware from 'webpack-hot-middleware'
+    import config from '../../webpack.dev.config.js'
+    
+    const app = express(),
+                DIST_DIR = __dirname,
+                HTML_FILE = path.join(DIST_DIR, 'index.html'),
+                compiler = webpack(config)
+    
+    app.use(webpackDevMiddleware(compiler, {
+      publicPath: config.output.publicPath
+    }))
+    
+    app.use(webpackHotMiddleware(compiler))
+    
+    app.get('*', (req, res, next) => {
+      compiler.outputFileSystem.readFile(HTML_FILE, (err, result) => {
+      if (err) {
+        return next(err)
+      }
+      res.set('content-type', 'text/html')
+      res.send(result)
+      res.end()
+      })
+    })
+    
+    const PORT = process.env.PORT || 8080
+    
+    app.listen(PORT, () => {
+        console.log(`App listening to ${PORT}....`)
+        console.log('Press Ctrl+C to quit.')
+    })
+
+And finally `./src/index.js`
+
+    import logMessage from './js/logger'
+    import './css/style.css'
+    
+    // Log message to console
+    logMessage('A very warm welcome to Expack!')
+    
+    // Needed for Hot Module Replacement
+    module.hot.accept()
+
+Now just run `npm run buildDev` and `npm start` and if you make a change to a JS, CSS, or HTML file and save it, the change will appear almost instantly in the browser without you having to refresh. 
 
 ## Step 6: Add ESLint Code Linting
 
+    npm install --save-dev eslint babel-eslint eslint-loader
+
+Create a file in the root called `.eslintrc.js` with the following:
+
+    module.exports = {
+      "plugins": [ "react" ],
+      "extends": [
+        "eslint:recommended",
+        "plugin:react/recommended"
+      ],
+      "parser": "babel-eslint"
+    };
+
+Then update your `webpack.dev.config.js`
+
+    const path = require('path')
+    const webpack = require('webpack')
+    const HtmlWebPackPlugin = require('html-webpack-plugin')
+    
+    module.exports = {
+      entry: {
+        main: ['webpack-hot-middleware/client?path=/__webpack_hmr&timeout=20000', './src/index.js']
+      },
+      output: {
+        path: path.join(__dirname, 'dist'),
+        publicPath: '/',
+        filename: '[name].js'
+      },
+      mode: 'development',
+      target: 'web',
+      devtool: '#source-map',
+      module: {
+        rules: [
+          {
+            enforce: "pre",
+            test: /\.js$/,
+            exclude: /node_modules/,
+            loader: "eslint-loader",
+            options: {
+              emitWarning: true,
+              failOnError: false,
+              failOnWarning: false
+            }
+          },
+          {
+            test: /\.js$/,
+            exclude: /node_modules/,
+            loader: "babel-loader",
+          },
+          {
+            // Loads the javacript into html template provided.
+            // Entry point is set below in HtmlWebPackPlugin in Plugins 
+            test: /\.html$/,
+            use: [
+              {
+                loader: "html-loader",
+                //options: { minimize: true }
+              }
+            ]
+          },
+          { 
+            test: /\.css$/,
+            use: [ 'style-loader', 'css-loader' ]
+          },
+          {
+           test: /\.(png|svg|jpg|gif)$/,
+           use: ['file-loader']
+          }
+        ]
+      },
+      plugins: [
+        new HtmlWebPackPlugin({
+          template: "./src/html/index.html",
+          filename: "./index.html",
+          excludeChunks: [ 'server' ]
+        }),
+        new webpack.HotModuleReplacementPlugin(),
+        new webpack.NoEmitOnErrorsPlugin()
+      ]
+    }
+
+And add the following ESlint line disabler to the HMR code in `./src/index.js`:
+
+    module.hot.accept() // eslint-disable-line no-undef
+
+And now if you run `npm run buildDev`, you should receive 2 errors:
+
+* `Unexpected console statement  no-console`
+* `'console' is not defined      no-undef`
+
+Console statements should not be shipped in production code, which is why the linter is pointing this out. To silence it, you can just add the above comment to disable linting on the offending line in `logger.js`.
+
+Other ESLint plugins you may need are:
+
+* eslint-plugin-import
+* eslint-plugin-node
+* eslint-plugin-promise
+* eslint-plugin-react
+* eslint-plugin-standard
+
 ## Step 7: Add Jest Unit Testing and Coverage
 
+We will use Jest to unit test our code. Jest has way fewer issues than Mocha and Karma when used with Node, Express, and React, so in my opinion, it's definitely the way to go!
 
+    npm install --save-dev jest
 
+Now create a directory in the root called `__mocks__` and inside it two files: `fileMock.js` and `styleMock.js`. We'll use these to mock out large files and styles, since the originals of these aren't needed for unit testing. 
 
+    src
+    dist
+    __mocks__
+        fileMock.js
+        styleMock.js
 
+Place the following code in `fileMock.js`:
+
+    module.exports = 'test-file-stub';
+
+Place the following code in `styleMock.js`:
+
+    module.exports = {};
+
+Now update `package.json`:
+
+    "scripts": {
+      "test": "jest",
+      "coverage": "jest --coverage",
+      "buildDev": "rm -rf dist && webpack --mode development --config webpack.server.config.js && webpack --mode development --config webpack.dev.config.js",
+      "buildProd": "rm -rf dist && webpack --mode production --config webpack.server.config.js && webpack --mode production --config webpack.prod.config.js",
+      "start": "node ./dist/server.js"
+    },
+    "jest": {
+      "moduleNameMapper": {
+        "\\.(css|less)$": "<rootDir>/__mocks__/styleMock.js",
+        "\\.(gif|ttf|eot|svg)$": "<rootDir>/__mocks__/fileMock.js"
+      }
+    },
+
+Let's create an easily testable file. Create a new file `./src/js/adder.js` and a test file in a new directory, `./src/js/test/adder.test.js`
+
+Here's the code for `adder.js`:
+
+    const adder = (x, y) => x + y
+    export default adder
+
+And here's the code for `adder.test.js`:
+
+    import adder from '../adder'
+    
+    describe('Adder', () => {
+      test('adds two numbers', () => {
+        expect(adder(5, 3)).toEqual(8)
+      })
+    })
+
+Now you can run `npm test` - the test should pass, and you can also run `npm run coverage` to get a coverage report.
+
+And there you have it, folks! An Express-Webpack application with Hot Module Reloading, Linting, and Unit Testing with Jest. Again, if you enjoyed the article or it helped you, please hit the clap button or hit star on Github!
+
+Peace out. =)
 
 
