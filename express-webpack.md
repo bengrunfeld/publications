@@ -827,7 +827,9 @@ And finally `./src/index.js`
     logMessage('A very warm welcome to Expack!')
     
     // Needed for Hot Module Replacement
-    module.hot.accept()
+    if(typeof(module.hot) !== 'undefined') {
+      module.hot.accept() // eslint-disable-line no-undef  
+    }
 
 Now just run `npm run buildDev` and `npm start` and if you make a change to a JS, CSS, or HTML file and save it, the change will appear almost instantly in the browser without you having to refresh. 
 
